@@ -23,64 +23,43 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background: #1a2332;
         }
-        .container {
+        .wrapper {
             width: 100%;
             height: 100%;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
         }
-        .map-wrapper {
-            width: 100%;
-            max-width: 900px;
-            height: 500px;
-            border-radius: 20px;
-            overflow: hidden;
+        .map-container {
+            flex: 1;
             position: relative;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            background: white;
+            padding: 10px;
         }
         #map { 
             position: absolute; 
-            top: 0; 
-            left: 0;
-            right: 0;
-            bottom: 0; 
-            width: 100%; 
-            height: 100%;
+            top: 10px; 
+            left: 10px;
+            right: 10px;
+            bottom: 10px; 
+            width: calc(100% - 20px); 
+            height: calc(100% - 20px);
+            border-radius: 8px;
         }
-        .info-box {
-            position: absolute;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #CCCAEA;
-            padding: 25px 40px;
-            border-radius: 15px;
-            color: #3E4746;
+        .text-container {
+            background: #2d3439;
+            padding: 40px 20px;
             text-align: center;
-            max-width: 85%;
-            z-index: 10;
         }
-        .info-box h2 {
-            margin: 0 0 10px 0;
-            font-size: 20px;
-            font-weight: 600;
-            line-height: 1.4;
-        }
-        .info-box p {
+        .text-container p {
+            font-size: 1rem;
+            color: white;
+            line-height: 1.6;
             margin: 0;
-            font-size: 15px;
-            line-height: 1.4;
         }
         .distance {
-            color: #54577C;
-            font-style: italic;
-            font-size: 20px;
-            font-weight: 600;
+            color: #d4a574;
+            font-weight: 700;
         }
         .marker-olympia {
             width: 40px;
@@ -112,35 +91,23 @@
             filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.3));
         }
         
-        /* Responsive adjustments */
         @media (max-width: 768px) {
-            .map-wrapper {
-                height: 400px;
+            .text-container {
+                padding: 30px 15px;
             }
-            .info-box {
-                padding: 20px 25px;
-                max-width: 90%;
-            }
-            .info-box h2 {
-                font-size: 16px;
-            }
-            .distance {
-                font-size: 16px;
-            }
-            .info-box p {
-                font-size: 13px;
+            .text-container p {
+                font-size: 0.9rem;
             }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="map-wrapper">
+    <div class="wrapper">
+        <div class="map-container">
             <div id='map'></div>
-            <div class="info-box">
-                <h2>I'm from Olympia, Washington, roughly <span class="distance" id="distance">calculating...</span> away</h2>
-                <p>from your current location, according to your IP address.</p>
-            </div>
+        </div>
+        <div class="text-container">
+            <p>I live in Olympia Washington, roughly <span class="distance" id="distance">calculating...</span> away from your location, according to your IP address.</p>
         </div>
     </div>
 
@@ -235,7 +202,7 @@
                     .extend(userLocation);
                 
                 map.fitBounds(bounds, { 
-                    padding: {top: 80, bottom: 150, left: 80, right: 80}
+                    padding: {top: 80, bottom: 80, left: 80, right: 80}
                 });
             });
         }
