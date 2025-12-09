@@ -23,6 +23,25 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
+            background: #1a2332;
+        }
+        .container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .map-wrapper {
+            width: 100%;
+            max-width: 900px;
+            height: 500px;
+            border-radius: 20px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
         }
         #map { 
             position: absolute; 
@@ -35,22 +54,22 @@
         }
         .info-box {
             position: absolute;
-            bottom: 20px;
+            bottom: 30px;
             left: 50%;
             transform: translateX(-50%);
             background: #CCCAEA;
-            padding: 20px 30px;
-            border-radius: 12px;
+            padding: 25px 40px;
+            border-radius: 15px;
             color: #3E4746;
             text-align: center;
             max-width: 85%;
-            z-index: 1;
+            z-index: 10;
         }
         .info-box h2 {
-            margin: 0 0 8px 0;
+            margin: 0 0 10px 0;
             font-size: 20px;
             font-weight: 600;
-            line-height: 1.3;
+            line-height: 1.4;
         }
         .info-box p {
             margin: 0;
@@ -64,49 +83,65 @@
             font-weight: 600;
         }
         .marker-olympia {
-            width: 35px;
-            height: 35px;
-            border-radius: 50%;
-            background: white;
-            border: 3px solid #333;
-            cursor: pointer;
-        }
-        .marker-user {
             width: 40px;
             height: 40px;
-            background: #ffd700;
-            border-radius: 50%;
-            border: 3px solid #333;
+            border-radius: 50% 50% 50% 0;
+            background: white;
+            border: 4px solid #334;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
+            transform: rotate(-45deg);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+        }
+        .marker-olympia::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(45deg);
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #334;
+        }
+        .marker-user {
+            width: 60px;
+            height: 60px;
+            cursor: pointer;
+            font-size: 60px;
+            line-height: 1;
+            filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.3));
         }
         
         /* Responsive adjustments */
         @media (max-width: 768px) {
+            .map-wrapper {
+                height: 400px;
+            }
             .info-box {
-                padding: 15px 20px;
+                padding: 20px 25px;
                 max-width: 90%;
             }
             .info-box h2 {
-                font-size: 18px;
+                font-size: 16px;
             }
             .distance {
-                font-size: 18px;
+                font-size: 16px;
             }
             .info-box p {
-                font-size: 12px;
+                font-size: 13px;
             }
         }
     </style>
 </head>
 <body>
-    <div id='map'></div>
-    <div class="info-box">
-        <h2>I'm from Olympia, Washington, roughly <span class="distance" id="distance">calculating...</span> away</h2>
-        <p>from your current location, according to your IP address.</p>
+    <div class="container">
+        <div class="map-wrapper">
+            <div id='map'></div>
+            <div class="info-box">
+                <h2>I'm from Olympia, Washington, roughly <span class="distance" id="distance">calculating...</span> away</h2>
+                <p>from your current location, according to your IP address.</p>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -134,27 +169,22 @@
         // Function to get user's location via IP geolocation
         async function getUserLocation() {
             try {
-                // Using ipapi.co for free IP geolocation
                 const response = await fetch('https://ipapi.co/json/');
                 const data = await response.json();
                 return [data.longitude, data.latitude];
             } catch (error) {
                 console.error('Error getting location:', error);
-                // Fallback to a default location if IP lookup fails
                 return [-73.5673, 45.5017]; // Montreal as fallback
             }
         }
 
         // Initialize the map
         async function initMap() {
-            // Get user's location
             const userLocation = await getUserLocation();
             
-            // Calculate distance
             const distance = getDistance(olympia, userLocation);
             document.getElementById('distance').textContent = distance.toLocaleString() + ' miles';
 
-            // Initialize map
             const map = new mapboxgl.Map({
                 container: 'map',
                 style: 'mapbox://styles/mapbox/dark-v11',
@@ -163,12 +193,10 @@
             });
 
             map.on('load', () => {
-                // Create a curved line using Turf.js
                 const from = turf.point(olympia);
                 const to = turf.point(userLocation);
                 const greatCircle = turf.greatCircle(from, to, {npoints: 100});
 
-                // Add the curved line
                 map.addSource('route', {
                     'type': 'geojson',
                     'data': greatCircle
@@ -189,33 +217,29 @@
                     }
                 });
 
-                // Add Olympia marker
                 const olympiaEl = document.createElement('div');
                 olympiaEl.className = 'marker-olympia';
-                new mapboxgl.Marker(olympiaEl)
+                new mapboxgl.Marker({element: olympiaEl, anchor: 'bottom'})
                     .setLngLat(olympia)
                     .addTo(map);
 
-                // Add user location marker
                 const userEl = document.createElement('div');
                 userEl.className = 'marker-user';
-                userEl.innerHTML = '🧑';
-                new mapboxgl.Marker(userEl)
+                userEl.innerHTML = '🧑‍💻';
+                new mapboxgl.Marker({element: userEl, anchor: 'bottom'})
                     .setLngLat(userLocation)
                     .addTo(map);
 
-                // Fit map to show both points
                 const bounds = new mapboxgl.LngLatBounds()
                     .extend(olympia)
                     .extend(userLocation);
                 
                 map.fitBounds(bounds, { 
-                    padding: {top: 100, bottom: 200, left: 100, right: 100}
+                    padding: {top: 80, bottom: 150, left: 80, right: 80}
                 });
             });
         }
 
-        // Start the app
         initMap();
     </script>
 </body>
