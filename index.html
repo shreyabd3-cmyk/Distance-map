@@ -167,32 +167,41 @@
 
         async function getUserLocation() {
             try {
-                // Use ipify + ipapi combined approach
+                // Use ipify + freeipapi combined approach
                 const ipResponse = await fetch('https://api.ipify.org?format=json');
                 const ipData = await ipResponse.json();
+                console.log('User IP:', ipData.ip);
                 
                 // Now get location data using the IP
                 const locationResponse = await fetch(`https://freeipapi.com/api/json/${ipData.ip}`);
                 const locationData = await locationResponse.json();
-                console.log('User location data:', locationData);
+                console.log('User location data from IP:', locationData);
                 
                 if (locationData.latitude && locationData.longitude) {
                     return [locationData.longitude, locationData.latitude];
+                } else {
+                    throw new Error('No coordinates in response');
                 }
             } catch (error) {
-                console.log('IP geolocation failed:', error);
+                console.error('IP geolocation failed:', error);
+                alert('Could not detect your location. Please check console for errors.');
+                // Return null to indicate failure - don't use fallback
+                return null;
             }
-            
-            // Fallback location
-            console.log('Using fallback location (Montreal)');
-            return [-73.5673, 45.5017];
         }
 
         async function initMap() {
             const userLocation = await getUserLocation();
             
-            console.log('Olympia (your location):', olympia);
-            console.log('User location (visitor):', userLocation);
+            if (!userLocation) {
+                console.error('Could not get user location');
+                document.getElementById('distance').textContent = 'Unable to detect location';
+                return;
+            }
+            
+            console.log('=== LOCATION VERIFICATION ===');
+            console.log('OLYMPIA (YOU - West Coast):', olympia, '← Person emoji goes here');
+            console.log('VISITOR (Their IP location):', userLocation, '← Pin goes here');
             
             const distance = getDistance(olympia, userLocation);
             document.getElementById('distance').textContent = distance.toLocaleString() + ' miles';
@@ -248,7 +257,8 @@
                     .extend(userLocation);
                 
                 map.fitBounds(bounds, { 
-                    padding: {top: 80, bottom: 80, left: 80, right: 80}
+                    padding: {top: 120, bottom: 120, left: 120, right: 120},
+                    maxZoom: 4
                 });
             });
         }
