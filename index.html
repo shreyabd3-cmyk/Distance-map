@@ -186,6 +186,9 @@
         async function initMap() {
             const userLocation = await getUserLocation();
             
+            console.log('Olympia (your location):', olympia);
+            console.log('User location (visitor):', userLocation);
+            
             const distance = getDistance(olympia, userLocation);
             document.getElementById('distance').textContent = distance.toLocaleString() + ' miles';
 
