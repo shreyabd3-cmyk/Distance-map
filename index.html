@@ -268,10 +268,38 @@
                     .extend(olympia)
                     .extend(userLocation);
                 
+                // Calculate distance to determine appropriate zoom/padding
+                const distance = getDistance(olympia, userLocation);
+                let padding, maxZoom;
+                
+                if (distance < 50) {
+                    // Very close (0-50 miles) - zoom in a lot
+                    padding = {top: 150, bottom: 150, left: 150, right: 150};
+                    maxZoom = 9;
+                } else if (distance < 200) {
+                    // Close (50-200 miles) - zoom in moderately
+                    padding = {top: 140, bottom: 140, left: 140, right: 140};
+                    maxZoom = 7;
+                } else if (distance < 500) {
+                    // Medium distance (200-500 miles)
+                    padding = {top: 130, bottom: 130, left: 130, right: 130};
+                    maxZoom = 6;
+                } else if (distance < 1500) {
+                    // Far (500-1500 miles)
+                    padding = {top: 120, bottom: 120, left: 120, right: 120};
+                    maxZoom = 5;
+                } else {
+                    // Very far (1500+ miles)
+                    padding = {top: 100, bottom: 100, left: 100, right: 100};
+                    maxZoom = 4;
+                }
+                
                 map.fitBounds(bounds, { 
-                    padding: {top: 120, bottom: 120, left: 120, right: 120},
-                    maxZoom: 4
+                    padding: padding,
+                    maxZoom: maxZoom
                 });
+                
+                console.log(`Distance: ${distance} miles - Using maxZoom: ${maxZoom}`);
             });
         }
 
