@@ -29,6 +29,9 @@
       text-decoration-line: underline; text-decoration-style: wavy;
       text-decoration-color: var(--lavender); text-decoration-skip-ink: none;
       text-decoration-thickness: 2px; text-underline-offset: 5px; }
+    .route-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .route-stroke { fill: none; stroke: var(--lavender); stroke-width: 2.5;
+      stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
     .marker { pointer-events: none; }
     .person { width: 88px; height: 96px; }
     .person-glyph { position: relative; display: block; width: 88px; height: 96px;
@@ -57,6 +60,7 @@
   <main class="widget">
     <section class="map-panel" aria-label="Map showing Olympia and your approximate location">
       <div id="map"></div>
+      <svg class="route-overlay" aria-hidden="true"><path class="route-stroke" id="route-stroke"/></svg>
       <div class="status" id="status" role="status">Finding your approximate location…</div>
     </section>
     <section class="caption" aria-live="polite" aria-atomic="true">
@@ -138,15 +142,35 @@
     return unwrapRoute(turf.greatCircle(turf.point(visitor), turf.point(OLYMPIA), { npoints: 256 }));
   }
 
-  function routeAtProgress(points, progress) {
-    const fraction = Math.max(0, Math.min(1, progress));
-    if (fraction === 1) return points;
-    const cursor = fraction * (points.length - 1);
-    const index = Math.floor(cursor), amount = cursor - index;
-    const from = points[index], to = points[index + 1];
-    const tip = [from[0] + (to[0] - from[0]) * amount,
-      from[1] + (to[1] - from[1]) * amount];
-    return [...points.slice(0, index + 1), tip];
+  // A shallow decorative wave around the projected great-circle route.
+  // Wave size is measured in pixels, so it stays subtle at every distance.
+  function squigglePath(projected) {
+    const cumulative = [0];
+    for (let i = 1; i < projected.length; i++) {
+      cumulative.push(cumulative[i - 1] + Math.hypot(projected[i].x - projected[i - 1].x,
+        projected[i].y - projected[i - 1].y));
+    }
+    const total = cumulative[cumulative.length - 1];
+    if (total < 1) return '';
+    const count = Math.max(2, Math.ceil(total / 2));
+    const waves = Math.max(1, Math.round(total / 48));
+    const amplitude = Math.min(3, total / 40);
+    const path = [];
+    let segment = 1;
+    for (let i = 0; i <= count; i++) {
+      const progress = i / count, distance = progress * total;
+      while (segment < projected.length - 1 && cumulative[segment] < distance) segment++;
+      const a = projected[segment - 1], b = projected[segment];
+      const length = cumulative[segment] - cumulative[segment - 1];
+      const fraction = length > 0 ? (distance - cumulative[segment - 1]) / length : 0;
+      const dx = b.x - a.x, dy = b.y - a.y, norm = Math.hypot(dx, dy) || 1;
+      const taper = Math.min(1, distance / 24, (total - distance) / 24);
+      const wave = Math.sin(progress * waves * Math.PI * 2) * amplitude * taper;
+      const x = a.x + dx * fraction - dy / norm * wave;
+      const y = a.y + dy * fraction + dx / norm * wave;
+      path.push((i ? 'L' : 'M') + x.toFixed(2) + ',' + y.toFixed(2));
+    }
+    return path.join(' ');
   }
 
   function makePerson(map, position) {
@@ -213,14 +237,14 @@
     statusEl.textContent = 'Loading the map…';
     const map = new mapboxgl.Map({
       container: 'map', style: 'mapbox://styles/mapbox/light-v11',
-      projection: 'mercator', center: visitor || OLYMPIA, zoom: visitor ? 10 : 9,
-      minZoom: 0, maxZoom: 16, renderWorldCopies: true,
+      projection: 'globe', center: visitor || OLYMPIA, zoom: visitor ? 10 : 9,
+      minZoom: -2, maxZoom: 16, renderWorldCopies: false,
       // A portfolio illustration: prevent wheel/touch camera changes from
       // interrupting the opening sequence or trapping page scrolling.
       interactive: false, attributionControl: true
     });
-    let loaded = false, ready = false, animating = false, routeBounds;
-    let resizeFrame, animationFrame;
+    let loaded = false, ready = false, animating = false, routeBounds, routePoints;
+    let resizeFrame, animationFrame, redrawRoute = () => {};
     const watchdog = setTimeout(() => {
       if (!loaded) showUnavailable('The map is taking too long to load. Please try again later.');
     }, 15000);
@@ -235,9 +259,27 @@
       const width = mapPanel.clientWidth, height = mapPanel.clientHeight;
       // Sticker height + breathing room at top; attribution space at bottom.
       const side = Math.max(52, Math.min(72, width * 0.12));
-      return map.cameraForBounds(routeBounds, {
+      const camera = map.cameraForBounds(routeBounds, {
         padding: { top: 114, bottom: 42, left: side, right: side }, maxZoom: 12
       });
+      if (!camera || !routePoints) return camera;
+      // Globe framing differs from flat-map bounds. Check projected points
+      // synchronously before a paint, then restore the visitor's current view.
+      const previous = { center: map.getCenter(), zoom: map.getZoom() };
+      try {
+        for (let attempt = 0; attempt < 70; attempt++) {
+          map.jumpTo({ center: camera.center, zoom: camera.zoom });
+          const fits = routePoints.every(point => {
+            const p = map.project(point);
+            return p.x >= side && p.x <= width - side && p.y >= 114 && p.y <= height - 42;
+          });
+          if (fits || camera.zoom <= -2) break;
+          camera.zoom = Math.max(-2, camera.zoom - 0.15);
+        }
+      } finally {
+        map.jumpTo(previous);
+      }
+      return camera;
     }
 
     function refit() {
@@ -248,7 +290,7 @@
 
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(resizeFrame);
-      resizeFrame = requestAnimationFrame(() => { map.resize(); refit(); });
+      resizeFrame = requestAnimationFrame(() => { map.resize(); refit(); redrawRoute(); });
     });
     observer.observe(mapPanel);
     map.on('remove', () => {
@@ -261,6 +303,9 @@
       clearTimeout(watchdog);
       statusEl.hidden = true;
       try {
+        // Subtle lavender atmosphere around the globe, on the cream surface.
+        map.setFog({ color: '#fdf7e9', 'high-color': '#e8e8f2',
+          'space-color': '#fdf7e9', 'horizon-blend': 0.04, 'star-intensity': 0 });
         // A restrained cream/sage/lavender palette, matching the portfolio.
         // Only adjust base-map fills; leave route and marker colors intact.
         for (const layer of map.getStyle().layers) {
@@ -278,43 +323,43 @@
           return;
         }
         const points = routeBetween(visitor);
+        routePoints = points;
         const personPosition = points[points.length - 1];
         const person = makePerson(map, personPosition);
         makePin(map, points[0]);
         routeBounds = new mapboxgl.LngLatBounds();
         points.forEach(point => routeBounds.extend(point));
-        map.addSource('distance-route', { type: 'geojson', data: {
-          type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: routeAtProgress(points, 0) }
-        }});
-        map.addLayer({ id: 'distance-route', type: 'line', source: 'distance-route',
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: { 'line-color': '#9998CD', 'line-width': 3, 'line-dasharray': [2, 2],
-            'line-opacity': 0, 'line-opacity-transition': { duration: 0 }
-          }
-        });
+        const route = document.getElementById('route-stroke');
+        let routeProgress = 0, routeLength = 0;
+        function paintProgress() {
+          route.style.strokeDasharray = routeLength + ' ' + routeLength;
+          route.style.strokeDashoffset = String(routeLength * (1 - routeProgress));
+        }
+        redrawRoute = () => {
+          if (!ready) return;
+          const projected = points.map(point => map.project(point));
+          route.setAttribute('d', squigglePath(projected));
+          routeLength = route.getTotalLength();
+          paintProgress();
+        };
         const finish = () => {
           animating = false;
           ready = true;
           person.classList.add('visible');
           refit();
-          const source = map.getSource('distance-route');
-          const updateRoute = progress => source.setData({
-            type: 'Feature', properties: {},
-            geometry: { type: 'LineString', coordinates: routeAtProgress(points, progress) }
-          });
-          if (reducedMotion.matches) {
-            updateRoute(1);
-            map.setPaintProperty('distance-route', 'line-opacity', 1);
-            return;
-          }
-          // Only after camera movement ends, draw from the visitor toward Olympia.
-          map.setPaintProperty('distance-route', 'line-opacity', 1);
+          redrawRoute();
+          route.style.opacity = '1';
+          if (reducedMotion.matches) { routeProgress = 1; paintProgress(); return; }
+          mapPanel.dataset.phase = 'drawing';
           let drawingStarted;
           const draw = now => {
             if (drawingStarted === undefined) drawingStarted = now;
-            const progress = Math.min(1, (now - drawingStarted) / 1400);
-            updateRoute(reducedMotion.matches ? 1 : progress);
+            const progress = Math.min(1, (now - drawingStarted) / 1600);
+            // Smooth start and end, without rebuilding geographic data per frame.
+            routeProgress = reducedMotion.matches ? 1 : progress * progress * (3 - 2 * progress);
+            paintProgress();
             if (progress < 1 && !reducedMotion.matches) animationFrame = requestAnimationFrame(draw);
+            else mapPanel.dataset.phase = 'complete';
           };
           animationFrame = requestAnimationFrame(draw);
         };
@@ -327,21 +372,23 @@
             return;
           }
           // First hold on the visitor's pin, with no line visible.
-          map.jumpTo({ center: points[0], zoom: Math.min(16, Math.max(10, camera.zoom + 2)) });
+          map.jumpTo({ center: points[0], zoom: Math.min(12, Math.max(8, camera.zoom + 2.5)) });
+          mapPanel.dataset.phase = 'pin';
           let pinShownAt;
           const holdPin = now => {
             if (pinShownAt === undefined) pinShownAt = now;
-            if (now - pinShownAt < 500) {
+            if (now - pinShownAt < 650) {
               animationFrame = requestAnimationFrame(holdPin);
               return;
             }
             // Recalculate in case the iframe changed size during the pause.
             const target = fittedCamera() || camera;
             animating = true;
+            mapPanel.dataset.phase = 'zooming';
             person.classList.add('visible');
             map.once('moveend', finish);
-            map.easeTo({ center: target.center, zoom: target.zoom, duration: 2500,
-              easing: t => t * t * (3 - 2 * t) });
+            map.easeTo({ center: target.center, zoom: target.zoom, duration: 3400,
+              easing: t => 1 - Math.pow(1 - t, 3) });
           };
           animationFrame = requestAnimationFrame(holdPin);
         };
